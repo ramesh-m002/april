@@ -1,0 +1,166 @@
+<?php
+/**
+ * Course Search Toggle - Switch between legacy PHP and Flutter iframe versions
+ */
+
+// Admin setting to toggle between versions
+add_action('admin_init', function () {
+  register_setting('general', 'course_search_use_flutter', [
+    'type' => 'boolean',
+    'default' => false,
+    'sanitize_callback' => 'rest_sanitize_boolean',
+  ]);
+  add_settings_field(
+    'course_search_use_flutter',
+    'Use Flutter Course Search',
+    function () {
+      $val = get_option('course_search_use_flutter');
+      echo '<input type="checkbox" name="course_search_use_flutter" value="1" ' . checked(1, $val, false) . '>';
+      echo '<p class="description">Check to use the new Flutter-based course search instead of the legacy version.</p>';
+    },
+    'general'
+  );
+});
+
+// Handle QA override via query params (?cs=flutter or ?cs=legacy)
+add_action('init', function () {
+  if (!isset($_GET['cs'])) return;
+
+  $choice = sanitize_key($_GET['cs']);
+  if ($choice === 'flutter') {
+    setcookie('cs_override', 'flutter', time() + 30 * DAY_IN_SECONDS, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true);
+  } elseif ($choice === 'legacy') {
+    setcookie('cs_override', '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true);
+  }
+});
+
+// Check if override is active (for QA/testing)
+function course_search_override_active() {
+  // Cookie override
+  if (!empty($_COOKIE['cs_override']) && $_COOKIE['cs_override'] === 'flutter') {
+    return true;
+  }
+  // Role-based: auto-enable for logged-in editors/admins during rollout
+  if (is_user_logged_in() && current_user_can('edit_posts')) {
+    // Uncomment to force-on for staff:
+    // return true;
+  }
+  return false;
+}
+
+// Main URL router function
+function course_search_url() {
+  // Per-user/cookie override wins over the global toggle
+  if (course_search_override_active()) {
+    return home_url('/course-search-flutter/');
+  }
+  return get_option('course_search_use_flutter')
+    ? home_url('/course-search-flutter/')
+    : home_url('/course-search/');
+}
+
+// Automatically rewrite nav menu links with 'course-search-link' CSS class
+add_filter('nav_menu_link_attributes', function ($atts, $item) {
+  if (in_array('course-search-link', (array) $item->classes, true)) {
+    $atts['href'] = esc_url(course_search_url());
+  }
+  return $atts;
+}, 10, 2);
+
+
+
+
+//Temp//
+
+<?php
+/**
+ * Template Name: Course Search (Flutter)
+ * Description: Displays the Flutter course search widget in an iframe
+ */
+
+get_header();
+
+// Your Flutter app URL - UPDATE THIS to your actual Flutter host
+$flutter_base = 'https://your-flutter-host.example.com/course-search/';
+
+// Whitelist query params to forward to the iframe (prevents malicious URLs)
+$allowed_params = ['subject', 'level', 'term', 'q', 'page', 'search'];
+$forward_params = array_intersect_key($_GET, array_flip($allowed_params));
+
+// Sanitize each parameter value
+$forward_params = array_map('sanitize_text_field', $forward_params);
+
+// Build the iframe URL with forwarded parameters
+$iframe_src = empty($forward_params)
+  ? $flutter_base
+  : add_query_arg($forward_params, $flutter_base);
+?>
+
+<div id="primary" class="content-area">
+  <main id="main" class="site-main">
+    <div class="course-search-flutter-wrapper">
+      <iframe
+        id="course-search-iframe"
+        src="<?php echo esc_url($iframe_src); ?>"
+        title="Course Search"
+        style="width: 100%; min-height: 80vh; border: 0; display: block;"
+        loading="lazy"
+        allow="clipboard-write; fullscreen"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups">
+        <p>Your browser doesn't support iframes. <a href="<?php echo esc_url($iframe_src); ?>" target="_blank">Open course search in new window</a>.</p>
+      </iframe>
+    </div>
+
+    <style>
+      .course-search-flutter-wrapper {
+        width: 100%;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        overflow: hidden;
+        margin: 20px 0;
+      }
+      
+      /* Remove default page margins if needed */
+      .course-search-flutter-wrapper .entry-content,
+      .course-search-flutter-wrapper .page-content {
+        margin: 0;
+        padding: 0;
+      }
+
+      /* Responsive iframe */
+      @media (max-width: 768px) {
+        #course-search-iframe {
+          min-height: 70vh;
+        }
+      }
+    </style>
+
+    <script>
+      // Optional: Auto-resize iframe based on content height
+      // Only works if Flutter app is on same domain or sends postMessage
+      window.addEventListener('message', function(event) {
+        // Verify origin for security - UPDATE THIS to your Flutter domain
+        if (event.origin !== 'https://your-flutter-host.example.com') {
+          return;
+        }
+        
+        if (event.data && event.data.type === 'resize') {
+          const iframe = document.getElementById('course-search-iframe');
+          if (iframe && event.data.height) {
+            iframe.style.height = event.data.height + 'px';
+          }
+        }
+      });
+    </script>
+  </main>
+</div>
+
+<?php get_footer(); ?>
+
+//test//
+
+<div class="course-search-intro">
+  <h1>Find Your Perfect Course</h1>
+  <p>Search our comprehensive course catalog below...</p>
+</div>
