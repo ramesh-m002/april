@@ -1,0 +1,20 @@
+$args = array(
+    'post_type' => 'post',
+    'meta_query' => array(
+        array(
+            'key' => 'repeater_field_$_code',
+            'value' => 'ABC123',
+            'compare' => '='
+        )
+    )
+);
+
+$query = new WP_Query($args);
+
+if($query->have_posts()){
+    while($query->have_posts()){
+        $query->the_post();
+        echo get_the_title();
+    }
+}
+wp_reset_postdata();
